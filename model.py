@@ -66,77 +66,79 @@ class Net(nn.Module):
 if __name__ == "__main__":
     mbe_dir = "mbe/street"
     label_dir = "label/street"
+    validation_dir = "evaluation_setup"
     subdivs = 256
     epochs = 100
-    device = torch.device("cuda:0" if torch.cuda.is_available else "cpu")
-    print(device)
-    transform = transforms.Compose([transforms.ToTensor()])
-    batch_size = 4
-    X, Y = processing.make_validation_data(mbe_dir, label_dir, 40, 6)
-    X = processing.split_in_seqs(X, subdivs)
-    X = X.reshape(X.shape[0], X.shape[1], X.shape[2], 1)
-    Y = processing.split_in_seqs(Y, subdivs)
-    dataset = MyDataset(X, Y, transform = transform)
+    for fold in np.array([1, 2, 3, 4]):
+        device = torch.device("cuda:0" if torch.cuda.is_available else "cpu")
+        print(device)
+        transform = transforms.Compose([transforms.ToTensor()])
+        batch_size = 4
+        X, Y = processing.make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, fold)
+        X = processing.split_in_seqs(X, subdivs)
+        X = X.reshape(X.shape[0], X.shape[1], X.shape[2], 1)
+        Y = processing.split_in_seqs(Y, subdivs)
+        dataset = MyDataset(X, Y, transform = transform)
 
-    n_samples = len(dataset)
-    train_size = int(len(dataset) * 0.8)
-    val_size = n_samples - train_size
+        n_samples = len(dataset)
+        train_size = int(len(dataset) * 0.8)
+        val_size = n_samples - train_size
 
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-    trainloader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, shuffle=True)
-    valloader = torch.utils.data.DataLoader(val_dataset, batch_size = batch_size, shuffle = False)
+        trainloader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, shuffle=True)
+        valloader = torch.utils.data.DataLoader(val_dataset, batch_size = batch_size, shuffle = False)
 
-    net = Net()
-    net = net.float()
-    net.to(device)
-    criterion = nn.BCELoss()
-    optimizer = optim.Adam(net.parameters())
+        net = Net()
+        net = net.float()
+        net.to(device)
+        criterion = nn.BCELoss()
+        optimizer = optim.Adam(net.parameters())
 
-    train_loss_list, val_loss_list = [], []
-    for epoch in range(epochs):
-        net.train()
-        running_loss = 0.0
-        for i, data in enumerate(trainloader, 0):
-            inputs, labels = data[0].to(device), data[1].to(device)
-
-            optimizer.zero_grad()
-
-            outputs = net(inputs.float())
-            loss = criterion(outputs, labels.float())
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item()
-            """
-            if i % 50 == 49:
-                print("[%d, %4d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 50))
-                running_loss = 0.0
-            """
-        net.eval()
-        eval_loss = 0.0
-        with torch.no_grad():
-            for data in valloader:
+        train_loss_list, val_loss_list = [], []
+        for epoch in range(epochs):
+            net.train()
+            running_loss = 0.0
+            for i, data in enumerate(trainloader, 0):
                 inputs, labels = data[0].to(device), data[1].to(device)
+
+                optimizer.zero_grad()
 
                 outputs = net(inputs.float())
                 loss = criterion(outputs, labels.float())
-                eval_loss += loss.item()
-        print("Epoch [%d/%d], train_loss: %.4f, val_loss: %.4f" % (epoch + 1, epochs, running_loss/train_size, eval_loss/val_size))
-        train_loss_list.append(running_loss/train_size)
-        val_loss_list.append(eval_loss/val_size)
+                loss.backward()
+                optimizer.step()
 
-    print ("Finished Training")
+                running_loss += loss.item()
+                """
+                if i % 50 == 49:
+                    print("[%d, %4d] loss: %.3f" % (epoch + 1, i + 1, running_loss / 50))
+                    running_loss = 0.0
+                """
+            net.eval()
+            eval_loss = 0.0
+            with torch.no_grad():
+                for data in valloader:
+                    inputs, labels = data[0].to(device), data[1].to(device)
 
-    PATH = "./dcase2017_net.pth"
-    torch.save(net.state_dict(), PATH)
+                    outputs = net(inputs.float())
+                    loss = criterion(outputs, labels.float())
+                    eval_loss += loss.item()
+            print("Epoch [%d/%d], train_loss: %.4f, val_loss: %.4f" % (epoch + 1, epochs, running_loss/train_size, eval_loss/val_size))
+            train_loss_list.append(running_loss/train_size)
+            val_loss_list.append(eval_loss/val_size)
 
-    plt.figure()
-    plt.plot(range(epochs), train_loss_list, color='blue', linestyle='-', label='train_loss')
-    plt.plot(range(epochs), val_loss_list, color='green', linestyle='--', label='val_loss')
-    plt.legend()
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.title('Training and validation loss')
-    plt.grid()
-    plt.savefig("result.pdf", bbox_inches ="tight")
+        print ("Finished Training")
+
+        PATH = "./dcase2017_net.pth"
+        torch.save(net.state_dict(), PATH)
+
+        plt.figure()
+        plt.plot(range(epochs), train_loss_list, color='blue', linestyle='-', label='train_loss')
+        plt.plot(range(epochs), val_loss_list, color='green', linestyle='--', label='val_loss')
+        plt.legend()
+        plt.xlabel('epoch')
+        plt.ylabel('loss')
+        plt.title('Training and validation loss')
+        plt.grid()
+        plt.savefig("result.pdf", bbox_inches ="tight")
