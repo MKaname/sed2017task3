@@ -3,6 +3,7 @@ import librosa
 import re
 import numpy as np
 import pandas as pd
+from sklearn import preprocessing
 
 #sampling rate = 44100
 #hop_length = 20ms
@@ -29,7 +30,7 @@ def make_spectrogram(wav_dir, mbe_dir, sr):
     for wav_label in wavs:
         file_label = re.findall("([^\/]*)\.wav$", wav_label)
         file_path = os.path.join(mbe_dir, file_label[0] + ".npy")
-        np.save(file_path,librosa.feature.melspectrogram(wavs[wav_label],n_fft = 2048,　hop_length=int(0.02*sr),win_length=int(0.04*sr),sr=sr,n_mels=40).T)
+        np.save(file_path,librosa.feature.melspectrogram(wavs[wav_label],n_fft = 2048, hop_length=int(0.02*sr),win_length=int(0.04*sr),sr=sr,n_mels=40).T)
     print("wav convert to mbe is compleated\n")
 
 def load_anns(ann_dir):
@@ -69,21 +70,32 @@ def make_anns(ann_dir, label_dir, mbe_dir, classes):
 
 def load_desc_file(_desc_file):
     _desc_dict = dict()
+
+    __class_labels ={
+        "brakes squeaking": 0,
+        "car": 1,
+        "children": 2,
+        "large vehicle": 3,
+        "people speaking": 4,
+        "people walking": 5
+    }
+
     for line in open(_desc_file):
         words = line.strip().split('\t')
         name = words[0].split('/')[-1]
+        name = name.split(".")[0]
         if name not in _desc_dict:
             _desc_dict[name] = list()
         _desc_dict[name].append([float(words[2]), float(words[3]), __class_labels[words[-1]]])
     return _desc_dict
 
 def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, fold):
-    train_file = os.path.join(evaluation_setup_folder, 'street_fold{}_train.txt'.format(fold))
-    evaluate_file = os.path.join(evaluation_setup_folder, 'street_fold{}_evaluate.txt'.format(fold))
+    train_file = os.path.join(validation_dir, 'street_fold{}_train.txt'.format(fold))
+    evaluate_file = os.path.join(validation_dir, 'street_fold{}_evaluate.txt'.format(fold))
     train_dict = load_desc_file(train_file)
-    test_dict = load_desc_file(evaluate_file)
+    val_dict = load_desc_file(evaluate_file)
 
-    X_train, Y_train, X_test, Y_test = None, None, None, None
+    X_train, Y_train, X_val, Y_val = None, None, None, None
 
     for key in train_dict.keys():
         tmp_mbe_file = os.path.join(mbe_dir, '{}.npy'.format(key))
@@ -95,17 +107,21 @@ def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, 
         else:
             X_train, Y_train = np.concatenate((X_train, tmp_mbe), 0), np.concatenate((Y_train, tmp_label), 0)
 
-    for key in test_dict.keys():
+    for key in val_dict.keys():
         tmp_mbe_file = os.path.join(mbe_dir, '{}.npy'.format(key))
         tmp_mbe = np.load(tmp_mbe_file)
         tmp_label_file = os.path.join(label_dir, '{}.npy'.format(key))
         tmp_label = np.load(tmp_label_file)
-        if X_test is None:
-            X_test, Y_test = tmp_mbe, tmp_label
+        if X_val is None:
+            X_val, Y_val = tmp_mbe, tmp_label
         else:
-            X_test, Y_test = np.concatenate((X_train, tmp_mbe), 0), np.concatenate((Y_train, tmp_label), 0)
+            X_val, Y_val = np.concatenate((X_train, tmp_mbe), 0), np.concatenate((Y_train, tmp_label), 0)
 
-    return X_train, Y_train, X_test, Y_test
+    scaler = preprocessing.StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+
+    return X_train, Y_train, X_val, Y_val
 
 def make_validation_data(mbe_dir, label_dir, in_dim, out_dim):
     X = np.empty([0, in_dim])

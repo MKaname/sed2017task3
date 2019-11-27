@@ -70,29 +70,36 @@ if __name__ == "__main__":
     subdivs = 256
     epochs = 100
     for fold in np.array([1, 2, 3, 4]):
+        print("validation {} is running\n".format(fold))
+
         device = torch.device("cuda:0" if torch.cuda.is_available else "cpu")
         print(device)
+
         transform = transforms.Compose([transforms.ToTensor()])
-        batch_size = 4
-        X, Y = processing.make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, fold)
-        X = processing.split_in_seqs(X, subdivs)
-        X = X.reshape(X.shape[0], X.shape[1], X.shape[2], 1)
-        Y = processing.split_in_seqs(Y, subdivs)
-        dataset = MyDataset(X, Y, transform = transform)
+        batch_size = 32
+        X_train, Y_train, X_val, Y_val = processing.make_validation_data_1(mbe_dir, label_dir, validation_dir, 40, 6, fold)
 
-        n_samples = len(dataset)
-        train_size = int(len(dataset) * 0.8)
-        val_size = n_samples - train_size
+        X_train = processing.split_in_seqs(X_train, subdivs)
+        X_val = processing.split_in_seqs(X_val, subdivs)
+        X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2], 1)
+        X_val = X_val.reshape(X_val.shape[0], X_val.shape[1], X_val.shape[2], 1)
+        Y_train = processing.split_in_seqs(Y_train, subdivs)
+        Y_val = processing.split_in_seqs(Y_val, subdivs)
+        train_dataset = MyDataset(X_train, Y_train, transform = transform)
+        val_dataset = MyDataset(X_val, Y_val, transform = transform)
 
-        train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+        train_size = len(train_dataset)
+        val_size = len(val_dataset)
+        print(train_size)
+        print(val_size)
 
-        trainloader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, shuffle=True)
+        trainloader = torch.utils.data.DataLoader(train_dataset, batch_size = batch_size, shuffle=False)
         valloader = torch.utils.data.DataLoader(val_dataset, batch_size = batch_size, shuffle = False)
 
         net = Net()
         net = net.float()
         net.to(device)
-        criterion = nn.BCELoss()
+        criterion = nn.BCELoss(reduction="sum")
         optimizer = optim.Adam(net.parameters())
 
         train_loss_list, val_loss_list = [], []
@@ -130,7 +137,7 @@ if __name__ == "__main__":
 
         print ("Finished Training")
 
-        PATH = "./dcase2017_net.pth"
+        PATH = "./dcase2017_net_fold{}.pth".format(fold)
         torch.save(net.state_dict(), PATH)
 
         plt.figure()
@@ -141,4 +148,4 @@ if __name__ == "__main__":
         plt.ylabel('loss')
         plt.title('Training and validation loss')
         plt.grid()
-        plt.savefig("result.pdf", bbox_inches ="tight")
+        plt.savefig("result_fold{}.pdf".format(fold), bbox_inches ="tight")
