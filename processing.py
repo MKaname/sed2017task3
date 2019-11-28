@@ -25,12 +25,12 @@ def load_wavs_dict(wav_dir, sr):
         wavs[file_path] = wav
     return wavs
 
-def make_spectrogram(wav_dir, mbe_dir, sr):
+def make_spectrogram(wav_dir, mbe_dir, sr, nfft):
     wavs = load_wavs_dict(wav_dir, sr)
     for wav_label in wavs:
         file_label = re.findall("([^\/]*)\.wav$", wav_label)
         file_path = os.path.join(mbe_dir, file_label[0] + ".npy")
-        np.save(file_path,librosa.feature.melspectrogram(wavs[wav_label],n_fft = 2048, hop_length=int(0.02*sr),win_length=int(0.04*sr),sr=sr,n_mels=40).T)
+        np.save(file_path,librosa.feature.melspectrogram(wavs[wav_label], n_fft = nfft, hop_length = nfft//2, win_length = nfft, sr=sr, n_mels=40).T)
     print("wav convert to mbe is compleated\n")
 
 def load_anns(ann_dir):
@@ -49,7 +49,7 @@ def load_anns_dict(ann_dir):
         anns[ann[6][0]] = ann
     return anns
 
-def make_anns(ann_dir, label_dir, mbe_dir, classes):
+def make_anns(ann_dir, label_dir, mbe_dir, classes, sr, nfft):
     class_to_number = dict()
     for i, label in enumerate(classes):
         class_to_number[label] = i
@@ -61,10 +61,10 @@ def make_anns(ann_dir, label_dir, mbe_dir, classes):
         mbe_time = len(np.load(os.path.join(mbe_dir,ann_label) + ".npy"))
         label_array = np.zeros((mbe_time, len(classes)))
         for i in range(len(anns[ann_label])):
-            begin_frame = int(ann[2][i]*1000/20)
-            end_frame = int(ann[3][i]*1000/20)
+            begin_frame = int(ann[2][i]*nfft / (sr*2))
+            end_frame = int(ann[3][i]*nfft / (sr*2))
             class_number = class_to_number[ann[4][i]]
-            label_array[begin_frame:(end_frame),class_number] = 1
+            label_array[begin_frame:end_frame, class_number] = 1
         np.save(file_path, label_array)
     print("label making is done\n")
 
@@ -89,7 +89,7 @@ def load_desc_file(_desc_file):
         _desc_dict[name].append([float(words[2]), float(words[3]), __class_labels[words[-1]]])
     return _desc_dict
 
-def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, fold):
+def make_validation_data_1(mbe_dir, label_dir, validation_dir, fold):
     train_file = os.path.join(validation_dir, 'street_fold{}_train.txt'.format(fold))
     evaluate_file = os.path.join(validation_dir, 'street_fold{}_evaluate.txt'.format(fold))
     train_dict = load_desc_file(train_file)
@@ -98,6 +98,7 @@ def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, 
     X_train, Y_train, X_val, Y_val = None, None, None, None
 
     for key in train_dict.keys():
+        print("train:{}".format(key))
         tmp_mbe_file = os.path.join(mbe_dir, '{}.npy'.format(key))
         tmp_mbe = np.load(tmp_mbe_file)
         tmp_label_file = os.path.join(label_dir, '{}.npy'.format(key))
@@ -108,6 +109,7 @@ def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, 
             X_train, Y_train = np.concatenate((X_train, tmp_mbe), 0), np.concatenate((Y_train, tmp_label), 0)
 
     for key in val_dict.keys():
+        print("test:{}".format(key))
         tmp_mbe_file = os.path.join(mbe_dir, '{}.npy'.format(key))
         tmp_mbe = np.load(tmp_mbe_file)
         tmp_label_file = os.path.join(label_dir, '{}.npy'.format(key))
@@ -115,7 +117,7 @@ def make_validation_data_1(mbe_dir, label_dir, validation_dir, in_dim, out_dim, 
         if X_val is None:
             X_val, Y_val = tmp_mbe, tmp_label
         else:
-            X_val, Y_val = np.concatenate((X_train, tmp_mbe), 0), np.concatenate((Y_train, tmp_label), 0)
+            X_val, Y_val = np.concatenate((X_val, tmp_mbe), 0), np.concatenate((Y_val, tmp_label), 0)
 
     scaler = preprocessing.StandardScaler()
     X_train = scaler.fit_transform(X_train)
@@ -157,5 +159,5 @@ if __name__ == "__main__":
     ann_dir = "meta/street"
     label_dir = "label/street"
     classes = ["brakes squeaking", "car", "children", "large vehicle", "people speaking","people walking"]
-    make_spectrogram(wav_dir, mbe_dir, 44100)
-    make_anns(ann_dir, label_dir, mbe_dir, classes)
+    make_spectrogram(wav_dir, mbe_dir, 44100, 2048)
+    make_anns(ann_dir, label_dir, mbe_dir, classes, 44100, 2048)

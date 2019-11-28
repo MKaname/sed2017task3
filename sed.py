@@ -54,7 +54,7 @@ def get_model(data_in, data_out, _cnn_nb_filt, _cnn_pool_size, _rnn_nb, _fc_nb):
     _model.summary()
     return _model
 
-
+pytorch timedistributed
 def plot_functions(_nb_epoch, _tr_loss, _val_loss, _f1, _er, extension=''):
     plot.figure()
 
